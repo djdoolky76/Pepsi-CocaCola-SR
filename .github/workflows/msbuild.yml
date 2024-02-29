@@ -1,0 +1,59 @@
+name: Publish
+
+on:
+   push:
+    branches: [ master ]
+   pull_request:
+    branches: [ master ]    
+   workflow_dispatch:
+
+env:
+  SOLUTION_FILE_PATH: ./Pipsi-SR.sln
+  BUILD_CONFIGURATION: Release
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: windows-latest
+
+    steps:
+    - uses: actions/checkout@v3
+      with:
+        submodules: recursive
+
+    - name: Install MSBuild
+      uses: microsoft/setup-msbuild@v1.0.2
+    - name: Set up Vcpkg and Install Detours
+      run: |
+        git clone https://github.com/microsoft/vcpkg
+        cd vcpkg
+        bootstrap-vcpkg.bat
+        vcpkg integrate install
+        vcpkg install detours:x64-windows-static
+        vcpkg install detours:x64-windows-static-release
+
+    - name: Build Pipsi-SR solution
+      working-directory: ./
+      run: msbuild /m /p:Configuration=${{env.BUILD_CONFIGURATION}} ${{env.SOLUTION_FILE_PATH}}
+
+    - name: Removing unused files
+      shell: bash
+      run: |
+        rm -rf ./x64/Release/*.obj
+        rm -rf ./x64/Release/*.pdb
+      
+    - name: Install 7zip
+      run: choco install 7zip
+
+    - name: Compress files to 7z
+      run: |
+        $date = Get-Date -Format "yyyyMMddHHmmss"
+        7z a Pipsi-SR-release-$date.7z ./x64/Release/*
+    - name: Upload Pipsi-SR latest artifact
+      uses: actions/upload-artifact@v3.1.0
+      with:
+        name: Pipsi-SR-release
+        path: ./Pipsi-SR-release-*.7z
+        if-no-files-found: error
